@@ -64,3 +64,26 @@ export const getMySalon = async (req: Request, res: Response, next: NextFunction
     next(error);
   }
 };
+
+// --- GET ALL ACTIVE SALONS (PUBLIC) ---
+export const getAllSalons = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const salons = await prisma.salon.findMany({
+      where: { isActive: true },
+      include: {
+        barbers: {
+          include: {
+            // We only select the ID and Name for the public directory
+            user: {
+              select: { id: true, name: true } 
+            }
+          }
+        }
+      }
+    });
+
+    res.status(200).json({ success: true, salons });
+  } catch (error) {
+    next(error);
+  }
+};

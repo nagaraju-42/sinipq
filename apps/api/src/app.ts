@@ -1,3 +1,4 @@
+import queueRoutes from './routes/queue.routes';
 import salonRoutes from './routes/salon.routes';
 import authRoutes from './routes/auth.routes';
 
@@ -17,6 +18,7 @@ app.use(express.json());
 
 app.use('/api/auth', authRoutes);//day-3
 app.use('/api/salons', salonRoutes);//day-4 salon routes
+app.use('/api/queue', queueRoutes);//day-5 queue routes
 
 // Health Check Endpoint (For Railway CI/CD & Uptime)
 app.get('/health', (req: Request, res: Response) => {
