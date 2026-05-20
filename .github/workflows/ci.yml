@@ -1,0 +1,38 @@
+name: CI
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, staging, develop]
+
+jobs:
+  lint-and-test-api:
+    name: API — Lint, Type Check, Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # - run: npm run lint (Uncomment after adding scripts)
+      # - run: npm run type-check
+
+  lint-and-build-web:
+    name: Web — Lint, Type Check, Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build

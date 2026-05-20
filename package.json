@@ -1,0 +1,15 @@
+{
+  "name": "snipq",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0"
+  },
+  "scripts": {
+    "prepare": "husky"
+  }
+}
