@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import prisma from '../db/prisma';
 import { AppError } from '../AppError';
 
+import { io } from '../sockets/socket';
+
 // --- JOIN THE QUEUE ---
 export const joinQueue = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -51,6 +53,9 @@ export const joinQueue = async (req: Request, res: Response, next: NextFunction)
         status: 'WAITING'
       }
     });
+
+    // 📢 DAY-6: Broadcast real-time update to everyone listening to this specific barber's room
+    io.to(barberId).emit('queue-updated', { action: 'join', newEntry });
 
     res.status(201).json({ success: true, queueEntry: newEntry });
   } catch (error) {
@@ -105,6 +110,53 @@ export const getBarberQueue = async (req: Request, res: Response, next: NextFunc
     });
 
     res.status(200).json({ success: true, queue });
+  } catch (error) {
+    next(error);
+  }
+};
+// --- UPDATE QUEUE STATUS (MOVING THE LINE) ---
+export const updateQueueStatus = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { entryId } = req.params;
+    const { status } = req.body; // Expecting 'SERVING' or 'COMPLETED'
+
+    if (!['SERVING', 'COMPLETED', 'CANCELLED'].includes(status)) {
+      throw new AppError('Invalid status update', 400);
+    }
+
+    // 1. Find the current entry so we know which Barber's line we are modifying
+    const entry = await prisma.queueEntry.findUnique({
+      where: { id: entryId }
+    });
+
+    if (!entry) {
+      throw new AppError('Queue entry not found', 404);
+    }
+
+    // 2. Update the status of the specific customer
+    const updatedEntry = await prisma.queueEntry.update({
+      where: { id: entryId },
+      data: { status }
+    });
+
+    // 3. If they are done, shift everyone else behind them forward by 1
+    if (status === 'COMPLETED' || status === 'CANCELLED') {
+      await prisma.queueEntry.updateMany({
+        where: {
+          barberId: entry.barberId,
+          status: 'WAITING',
+          position: { gt: entry.position } // Only move people behind them
+        },
+        data: {
+          position: { decrement: 1 }
+        }
+      });
+    }
+
+    // 4. Broadcast to the waiting room that the line just moved!
+    io.to(entry.barberId).emit('queue-updated', { action: 'status-update' });
+
+    res.status(200).json({ success: true, queueEntry: updatedEntry });
   } catch (error) {
     next(error);
   }
