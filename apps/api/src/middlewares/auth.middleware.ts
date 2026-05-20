@@ -39,3 +39,14 @@ export const protect = (req: Request, res: Response, next: NextFunction) => {
     next(new AppError('Not authorized, token failed', 401));
   }
 };
+// 3. Role Authorization Middleware
+export const authorizeRoles = (...roles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    // If the user doesn't exist on the request, or their role isn't in the allowed list
+    if (!req.user || !roles.includes(req.user.role)) {
+      return next(new AppError('Forbidden: You do not have permission', 403));
+    }
+    // If they have the right role, let them through
+    next();
+  };
+};
