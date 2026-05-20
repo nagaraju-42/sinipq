@@ -1,3 +1,5 @@
+import authRoutes from './routes/auth.routes';
+
 import express, { Request, Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -11,6 +13,8 @@ app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000' }));
 app.use(compression());
 app.use(express.json());
+
+app.use('/api/auth', authRoutes);//day-3
 
 // Health Check Endpoint (For Railway CI/CD & Uptime)
 app.get('/health', (req: Request, res: Response) => {
