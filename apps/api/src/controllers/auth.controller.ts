@@ -6,11 +6,11 @@ import { AppError } from '../AppError';
 // --- REGISTER ROUTE ---
 export const register = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { phone, name, password, role } = req.body;
+    const { phone, name, password, role , email} = req.body;
 
     // 1. Validate input
-    if (!phone || !name || !password) {
-      throw new AppError('Phone, name, and password are required', 400);
+    if (!phone || !name || !password || !email) {
+      throw new AppError('Phone, name, password, and email are required', 400);
     }
 
     // 2. Check if user already exists
@@ -29,6 +29,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         name,
         passwordHash,
         role: role || 'CUSTOMER', // Default to customer if not provided
+        email
       },
     });
 

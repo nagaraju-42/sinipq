@@ -3,7 +3,8 @@ import {
   joinQueue, 
   getMyQueueStatus, 
   getBarberQueue, 
-  updateQueueStatus 
+  updateQueueStatus,
+  getQueueHistory 
 } from '../controllers/queue.controller';
 import { protect } from '../middlewares/auth.middleware';
 
@@ -25,4 +26,6 @@ router.get('/barber/:barberId', getBarberQueue);
 // 📢 4. NEW: Move the line / Update status (Barber/Owner)
 router.patch('/:entryId/status', updateQueueStatus);
 
+router.get('/history', getQueueHistory); // For Customers
+router.get('/history/barber/:barberId', getQueueHistory); // For Barbers/Owners
 export default router;
