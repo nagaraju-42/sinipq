@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { getBarbers } from '../controllers/barber.controller';
+import { getBarbers, addBarberToSalon } from '../controllers/barber.controller';
 
-const router = Router();
+// 🚀 FIX: We add 'export' directly to the variable (A Strict Named Export)
+export const barberRouter = Router();
 
-// When someone visits GET /api/barbers, run the getBarbers function
-router.get('/', getBarbers);
+barberRouter.get('/', getBarbers);
+barberRouter.post('/salon/:salonId', addBarberToSalon);
 
-export default router;
+// Notice: We completely deleted the 'export default' at the bottom!

@@ -3,17 +3,18 @@ import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
 
-// 🛣️ Route Imports
+// Standard default imports for files that haven't crashed
 import authRoutes from './routes/auth.routes';
 import salonRoutes from './routes/salon.routes';
-import queueRoutes from './routes/queue.routes';
-import barberRoutes from './routes/barber.routes';
+
+// 🚀 FIX: Strict named imports for the two bugged routes
+import { queueRouter } from './routes/queue.routes';
+import { barberRouter } from './routes/barber.routes';
 
 import { errorHandler } from './errorHandler';
 
 const app = express();
 
-// 🛡️ Middlewares
 app.use(helmet());
 app.use(cors({
   origin: 'http://localhost:5173', 
@@ -22,18 +23,20 @@ app.use(cors({
 app.use(compression());
 app.use(express.json());
 
-// 🔌 Active Routes
+// Load Active Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/salons', salonRoutes);
-app.use('/api/queue', queueRoutes);
-app.use('/api/barbers', barberRoutes); // Moved ABOVE the error handler!
 
-// 🏥 Health Check Endpoint 
+// 🚀 Load the Strict Routes
+app.use('/api/queue', queueRouter);
+app.use('/api/barbers', barberRouter); 
+
+// Health Check
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', ts: new Date().toISOString() });
 });
 
-// 🚨 Global Error Handler (Must be the last middleware)
+// Error Handler
 app.use(errorHandler);
 
 export default app;

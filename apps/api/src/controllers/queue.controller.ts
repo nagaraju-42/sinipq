@@ -3,21 +3,18 @@ import prisma from '../db/prisma';
 import { AppError } from '../AppError';
 
 import { io } from '../sockets/socket';
-import { sendQueueConfirmationEmail } from '../utils/email'; // day-7 email utility
+import { sendQueueConfirmationEmail } from '../utils/email'; 
 
 // --- JOIN THE QUEUE ---
 export const joinQueue = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { barberId } = req.body;
-    
-    // We know this exists because the route will be protected
     const customerId = req.user!.userId; 
 
     if (!barberId) {
       throw new AppError('Barber ID is required', 400);
     }
 
-    // 1. Verify the barber exists and is currently accepting customers
     const barber = await prisma.barber.findUnique({ 
       where: { id: barberId },
       include: { user: true } 
@@ -27,7 +24,6 @@ export const joinQueue = async (req: Request, res: Response, next: NextFunction)
       throw new AppError('Barber is not available right now', 400);
     }
 
-    // 2. Fetch the customer's details so we have their email address
     const customer = await prisma.user.findUnique({
       where: { id: customerId }
     });
@@ -36,28 +32,29 @@ export const joinQueue = async (req: Request, res: Response, next: NextFunction)
       throw new AppError('Customer not found', 404);
     }
 
-    // 3. Prevent double-booking: Check if customer is already WAITING somewhere
     const existingEntry = await prisma.queueEntry.findFirst({
       where: {
         customerId,
-        status: 'WAITING'
+        status: { in: ['WAITING', 'SERVING'] } 
       }
     });
 
     if (existingEntry) {
-      throw new AppError('You are already waiting in a queue', 400);
+      throw new AppError('You are already in a queue', 400);
     }
 
-    // 4. Calculate position: Count how many people are currently WAITING for this specific barber
-    const waitingCount = await prisma.queueEntry.count({
+    const lastInLine = await prisma.queueEntry.findFirst({
       where: {
         barberId,
-        status: 'WAITING'
+        status: { in: ['WAITING', 'SERVING'] } 
+      },
+      orderBy: {
+        position: 'desc' 
       }
     });
-    const position = waitingCount + 1;
+    
+    const position = lastInLine ? lastInLine.position + 1 : 1;
 
-    // 5. Create the official waitlist entry
     const newEntry = await prisma.queueEntry.create({
       data: {
         customerId,
@@ -68,16 +65,8 @@ export const joinQueue = async (req: Request, res: Response, next: NextFunction)
       }
     });
 
-    // 📢 DAY-6: Broadcast real-time update to everyone listening to this specific barber's room
     io.to(barberId).emit('queue-updated', { action: 'join', newEntry });
 
-    // 👀 DEBUG LOG:
-    console.log("🔍 DEBUG EMAIL CHECK:", { 
-      hasEmail: customer.email, 
-      hasBarberUser: barber.user ? barber.user.name : 'Missing Barber User' 
-    });
-
-    // 📧 DAY-7: Fire off the confirmation email in the background!
     if (customer.email && barber.user) {
       sendQueueConfirmationEmail(
         customer.email, 
@@ -93,7 +82,7 @@ export const joinQueue = async (req: Request, res: Response, next: NextFunction)
   }
 };
 
-// --- GET MY QUEUE STATUS (CUSTOMER VIEW) ---
+// --- GET MY QUEUE STATUS ---
 export const getMyQueueStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const customerId = req.user!.userId;
@@ -101,12 +90,10 @@ export const getMyQueueStatus = async (req: Request, res: Response, next: NextFu
     const myEntry = await prisma.queueEntry.findFirst({
       where: {
         customerId,
-        status: 'WAITING'
+        status: { in: ['WAITING', 'SERVING'] } 
       },
       include: {
-        barber: {
-          include: { user: { select: { name: true } } }
-        },
+        barber: { include: { user: { select: { name: true } } } },
         salon: { select: { name: true } }
       }
     });
@@ -121,7 +108,7 @@ export const getMyQueueStatus = async (req: Request, res: Response, next: NextFu
   }
 };
 
-// --- GET BARBER QUEUE (BARBER/OWNER VIEW) ---
+// --- GET BARBER QUEUE ---
 export const getBarberQueue = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { barberId } = req.params;
@@ -129,9 +116,9 @@ export const getBarberQueue = async (req: Request, res: Response, next: NextFunc
     const queue = await prisma.queueEntry.findMany({
       where: {
         barberId,
-        status: 'WAITING'
+        status: { in: ['WAITING', 'SERVING'] } 
       },
-      orderBy: { createdAt: 'asc' }, 
+      orderBy: { position: 'asc' }, 
       include: {
         customer: { select: { name: true } }
       }
@@ -143,7 +130,7 @@ export const getBarberQueue = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-// --- UPDATE QUEUE STATUS (MOVING THE LINE) ---
+// --- UPDATE QUEUE STATUS ---
 export const updateQueueStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { entryId } = req.params;
@@ -170,7 +157,7 @@ export const updateQueueStatus = async (req: Request, res: Response, next: NextF
       await prisma.queueEntry.updateMany({
         where: {
           barberId: entry.barberId,
-          status: 'WAITING',
+          status: { in: ['WAITING', 'SERVING'] }, 
           position: { gt: entry.position } 
         },
         data: {
@@ -207,11 +194,9 @@ export const getQueueHistory = async (req: Request, res: Response, next: NextFun
       });
     } else if (role === 'BARBER' || role === 'OWNER') {
       const { barberId } = req.params;
-      
       if (!barberId) {
         throw new AppError('Barber ID is required in the URL for this role', 400);
       }
-
       history = await prisma.queueEntry.findMany({
         where: {
           barberId,
@@ -225,6 +210,28 @@ export const getQueueHistory = async (req: Request, res: Response, next: NextFun
     }
 
     res.status(200).json({ success: true, history });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 🚀 NEW: --- CLEAR ENTIRE QUEUE (EMERGENCY RESET) ---
+export const clearBarberQueue = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { barberId } = req.params;
+
+    // Instantly cancel everyone currently in the waiting area for this barber
+    await prisma.queueEntry.updateMany({
+      where: {
+        barberId,
+        status: { in: ['WAITING', 'SERVING'] }
+      },
+      data: { status: 'CANCELLED' }
+    });
+
+    io.to(barberId).emit('queue-updated', { action: 'status-update' });
+
+    res.status(200).json({ success: true, message: 'Queue completely cleared.' });
   } catch (error) {
     next(error);
   }

@@ -3,35 +3,27 @@ import prisma from '../db/prisma';
 import { AppError } from '../AppError';
 import { hashPassword } from '../utils/jwt';
 
-// 1. Fetches all barbers for the Dashboard
-export const getBarbers = async (req: Request, res: Response) => {
+export const getBarbers = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // 🚀 FIX: Query the barber table directly to secure the actual Barber ID
     const barbers = await prisma.barber.findMany({
       where: { isAvailable: true },
-      // 🔗 Include the related user record to access profile details
       include: {
-        user: { 
-          select: { name: true, phone: true } 
-        }
+        user: { select: { name: true, phone: true } }
       }
     });
 
-    // 🔄 Map the database structure to match your frontend's expected format
     const formattedBarbers = barbers.map(b => ({
-      id: b.id, // This is now the valid Barber Profile ID, not the User ID!
+      id: b.id, 
       name: b.user.name,
       phone: b.user.phone
     }));
 
     res.json(formattedBarbers);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Failed to fetch barbers' });
+    next(error);
   }
 };
 
-// 2. Adds a new barber to a specific salon
 export const addBarberToSalon = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { salonId } = req.params; 
