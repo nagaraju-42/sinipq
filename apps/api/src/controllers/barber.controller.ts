@@ -3,53 +3,70 @@ import prisma from '../db/prisma';
 import { AppError } from '../AppError';
 import { hashPassword } from '../utils/jwt';
 
+// 1. Fetches all barbers for the Dashboard
+export const getBarbers = async (req: Request, res: Response) => {
+  try {
+    // 🚀 FIX: Query the barber table directly to secure the actual Barber ID
+    const barbers = await prisma.barber.findMany({
+      where: { isAvailable: true },
+      // 🔗 Include the related user record to access profile details
+      include: {
+        user: { 
+          select: { name: true, phone: true } 
+        }
+      }
+    });
+
+    // 🔄 Map the database structure to match your frontend's expected format
+    const formattedBarbers = barbers.map(b => ({
+      id: b.id, // This is now the valid Barber Profile ID, not the User ID!
+      name: b.user.name,
+      phone: b.user.phone
+    }));
+
+    res.json(formattedBarbers);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Failed to fetch barbers' });
+  }
+};
+
+// 2. Adds a new barber to a specific salon
 export const addBarberToSalon = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { salonId } = req.params; // We get this from the URL
+    const { salonId } = req.params; 
     const { name, phone, password } = req.body;
-    const ownerId = req.user!.userId;
+    const ownerId = req.user!.userId; 
 
     if (!name || !phone || !password) {
       throw new AppError('Name, phone, and password are required', 400);
     }
 
-    // 1. Verify the salon exists AND belongs to the person making the request
-    const salon = await prisma.salon.findUnique({ where: { id: salonId } });
+    const salon = await prisma.salon.findFirst({ 
+      where: { id: salonId, ownerId: ownerId } 
+    });
+
     if (!salon) {
-      throw new AppError('Salon not found', 404);
-    }
-    if (salon.ownerId !== ownerId) {
-      throw new AppError('Forbidden: You do not own this salon', 403);
+      throw new AppError('Salon not found or you do not have permission to modify it', 404);
     }
 
-    // 2. Ensure the phone number isn't already taken
     const existingUser = await prisma.user.findUnique({ where: { phone } });
     if (existingUser) {
       throw new AppError('Phone number is already registered', 409);
     }
 
-    // 3. Hash the new barber's password using our security lockbox
     const passwordHash = await hashPassword(password);
 
-    // 4. The Magic: Create the Barber profile AND the User account in one atomic step!
-// 4. The Magic: Create the Barber profile AND the User account in one atomic step!
     const newBarber = await prisma.barber.create({
       data: {
-        salon: { connect: { id: salonId } }, // <-- This is the fixed line!
+        salon: { connect: { id: salonId } },
         isAvailable: true,
         user: {
-          create: {
-            name,
-            phone,
-            passwordHash,
-            role: 'BARBER'
-          }
+          create: { name, phone, passwordHash, role: 'BARBER' }
         }
       },
       include: {
-        user: {
-          select: { id: true, name: true, phone: true, role: true }
-        }
+        user: { select: { id: true, name: true, phone: true, role: true } }
       }
     });
 

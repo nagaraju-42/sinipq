@@ -71,7 +71,7 @@ export const joinQueue = async (req: Request, res: Response, next: NextFunction)
     // 📢 DAY-6: Broadcast real-time update to everyone listening to this specific barber's room
     io.to(barberId).emit('queue-updated', { action: 'join', newEntry });
 
-    // 👀 ADD THIS DEBUG LOG:
+    // 👀 DEBUG LOG:
     console.log("🔍 DEBUG EMAIL CHECK:", { 
       hasEmail: customer.email, 
       hasBarberUser: barber.user ? barber.user.name : 'Missing Barber User' 
@@ -112,7 +112,6 @@ export const getMyQueueStatus = async (req: Request, res: Response, next: NextFu
     });
 
     if (!myEntry) {
-      // It's perfectly normal to not be in a queue, so we return 200 instead of an error
       return res.status(200).json({ success: true, inQueue: false });
     }
 
@@ -132,7 +131,6 @@ export const getBarberQueue = async (req: Request, res: Response, next: NextFunc
         barberId,
         status: 'WAITING'
       },
-      // Order by who joined first
       orderBy: { createdAt: 'asc' }, 
       include: {
         customer: { select: { name: true } }
@@ -149,13 +147,12 @@ export const getBarberQueue = async (req: Request, res: Response, next: NextFunc
 export const updateQueueStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { entryId } = req.params;
-    const { status } = req.body; // Expecting 'SERVING' or 'COMPLETED'
+    const { status } = req.body; 
 
     if (!['SERVING', 'COMPLETED', 'CANCELLED'].includes(status)) {
       throw new AppError('Invalid status update', 400);
     }
 
-    // 1. Find the current entry so we know which Barber's line we are modifying
     const entry = await prisma.queueEntry.findUnique({
       where: { id: entryId }
     });
@@ -164,19 +161,17 @@ export const updateQueueStatus = async (req: Request, res: Response, next: NextF
       throw new AppError('Queue entry not found', 404);
     }
 
-    // 2. Update the status of the specific customer
     const updatedEntry = await prisma.queueEntry.update({
       where: { id: entryId },
       data: { status }
     });
 
-    // 3. If they are done, shift everyone else behind them forward by 1
     if (status === 'COMPLETED' || status === 'CANCELLED') {
       await prisma.queueEntry.updateMany({
         where: {
           barberId: entry.barberId,
           status: 'WAITING',
-          position: { gt: entry.position } // Only move people behind them
+          position: { gt: entry.position } 
         },
         data: {
           position: { decrement: 1 }
@@ -184,7 +179,6 @@ export const updateQueueStatus = async (req: Request, res: Response, next: NextF
       });
     }
 
-    // 4. Broadcast to the waiting room that the line just moved!
     io.to(entry.barberId).emit('queue-updated', { action: 'status-update' });
 
     res.status(200).json({ success: true, queueEntry: updatedEntry });
@@ -200,20 +194,18 @@ export const getQueueHistory = async (req: Request, res: Response, next: NextFun
     let history;
 
     if (role === 'CUSTOMER') {
-      // Customers see their own past appointments
       history = await prisma.queueEntry.findMany({
         where: {
           customerId: userId,
           status: { in: ['COMPLETED', 'CANCELLED'] }
         },
-        orderBy: { updatedAt: 'desc' }, // Newest first
+        orderBy: { updatedAt: 'desc' }, 
         include: {
           barber: { include: { user: { select: { name: true } } } },
           salon: { select: { name: true } }
         }
       });
     } else if (role === 'BARBER' || role === 'OWNER') {
-      // Barbers/Owners see the history for a specific barber
       const { barberId } = req.params;
       
       if (!barberId) {

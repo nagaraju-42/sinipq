@@ -10,11 +10,13 @@ import { protect } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// Apply the 'protect' middleware to ALL routes in this file. 
-// You must be logged in to join, view, or update a queue.
+// 🛡️ THE BOUNCER: This is exactly why your terminal was silent!
+// The 'protect' middleware stops anyone without a valid token.
+// Because it blocked the request immediately, the request never reached your controller,
+// which means your backend never printed an error log to the terminal!
 router.use(protect);
 
-// 1. Join a barber's queue (Customer)
+// 1. Join a barber's queue (Customer) -> Maps to POST /api/queue/join
 router.post('/join', joinQueue);
 
 // 2. Check my own status (Customer)
@@ -23,9 +25,11 @@ router.get('/status', getMyQueueStatus);
 // 3. View the whole line for a specific barber (Barber/Owner)
 router.get('/barber/:barberId', getBarberQueue);
 
-// 📢 4. NEW: Move the line / Update status (Barber/Owner)
+// 4. Move the line / Update status (Barber/Owner)
 router.patch('/:entryId/status', updateQueueStatus);
 
-router.get('/history', getQueueHistory); // For Customers
-router.get('/history/barber/:barberId', getQueueHistory); // For Barbers/Owners
+// 5. History Routes
+router.get('/history', getQueueHistory); 
+router.get('/history/barber/:barberId', getQueueHistory); 
+
 export default router;
