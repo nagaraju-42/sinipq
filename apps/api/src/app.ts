@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
+import { apiLimiter } from './middlewares/rateLimiter';
 
 // Standard default imports for files that haven't crashed
 import authRoutes from './routes/auth.routes';
@@ -14,7 +16,13 @@ import { barberRouter } from './routes/barber.routes';
 import { errorHandler } from './errorHandler';
 
 const app = express();
+// Apply Global Rate Limiting
+app.use('/api', apiLimiter);
 
+// Load Active Routes
+app.use('/api/auth', authRouter);
+app.use('/api/salons', salonRouter);
+// ... your other routes
 app.use(helmet());
 app.use(cors({
   origin: 'http://localhost:5173', 
@@ -22,7 +30,7 @@ app.use(cors({
 }));
 app.use(compression());
 app.use(express.json());
-
+app.use(cookieParser()); // 🚀 Allows req.cookies to work
 // Load Active Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/salons', salonRoutes);

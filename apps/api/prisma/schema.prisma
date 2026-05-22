@@ -6,94 +6,15 @@ datasource db {
   provider = "postgresql"
 }
 
+// ==========================================
+// 1. ENUMS (Global States)
+// ==========================================
+
 enum Role {
   CUSTOMER
-  OWNER
   BARBER
-}
-
-enum SlotStatus {
-  AVAILABLE
-  CONFIRMED
-  WALK_IN
-  BLOCKED
-  COMPLETED
-  CANCELLED
-}
-
-model User {
-  id           String   @id @default(uuid())
-  phone        String   @unique
-  email        String?  @unique
-  name         String
-  passwordHash String
-  role         Role     @default(CUSTOMER)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
-  salonsOwned   Salon[]   @relation("SalonOwner")
-  barberProfile Barber?
-  bookings      Booking[]
-  queueEntries  QueueEntry[]//day-5
-}
-
-model Salon {
-  id        String   @id @default(uuid())
-  name      String
-  address   String
-  ownerId   String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  owner   User     @relation("SalonOwner", fields: [ownerId], references: [id])
-  barbers Barber[]
-  queueEntries  QueueEntry[]//day-5
-}
-
-model Barber {
-  id          String   @id @default(uuid())
-  salonId     String
-  userId      String   @unique
-  isAvailable Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  salon Salon  @relation(fields: [salonId], references: [id])
-  user  User   @relation(fields: [userId], references: [id])
-  slots Slot[]
-  queueEntries  QueueEntry[]//day-5
-}
-
-model Slot {
-  id        String     @id @default(uuid())
-  barberId  String
-  startTime DateTime
-  endTime   DateTime
-  status    SlotStatus @default(AVAILABLE)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-
-  // Relations
-  barber  Barber   @relation(fields: [barberId], references: [id])
-  booking Booking?
-}
-
-model Booking {
-  id                String   @id @default(uuid())
-  slotId            String   @unique
-  customerId        String
-  razorpayPaymentId String? // Nullable until the ₹10 fee is paid
-  checkInOtp        String // 4-digit code generated on confirmation
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  // Relations
-  slot     Slot @relation(fields: [slotId], references: [id])
-  customer User @relation(fields: [customerId], references: [id])
+  OWNER
+  ADMIN
 }
 
 enum QueueStatus {
@@ -103,18 +24,211 @@ enum QueueStatus {
   CANCELLED
 }
 
+enum SlotStatus {
+  AVAILABLE
+  CONFIRMED
+  WALK_IN
+  BLOCKED
+  IN_SERVICE
+  COMPLETED
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  ARRIVED
+  IN_SERVICE
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+// ==========================================
+// 2. CORE ENTITIES
+// ==========================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique   // 🚀 FIX: Now strictly REQUIRED
+  phone         String?   @unique   // Phone is optional until SMS OTP is built
+  passwordHash  String
+  role          Role      @default(CUSTOMER)
+  fcmToken      String?
+  isVerified    Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  ownedSalons   Salon[]   @relation("owner")
+  barberProfile Barber?
+  queueEntries  QueueEntry[]
+  bookings      Booking[]
+  ratings       Rating[]
+}
+
+model Salon {
+  id               String    @id @default(cuid())
+  ownerId          String
+  owner            User      @relation("owner", fields: [ownerId], references: [id])
+  name             String
+  address          String
+  pincode          String    @default("000000")
+  openTime         String    @default("09:00")
+  closeTime        String    @default("21:00")
+  slotDurationMin  Int       @default(30)
+  phonePeQrUrl     String?
+  isActive         Boolean   @default(true)
+  avgRating        Float     @default(0)
+  createdAt        DateTime  @default(now())
+
+  barbers          Barber[]
+  services         Service[]
+  slots            Slot[]
+  queueEntries     QueueEntry[]
+  walkIns          WalkIn[]
+}
+
+model Barber {
+  id              String    @id @default(cuid())
+  salonId         String
+  salon           Salon     @relation(fields: [salonId], references: [id])
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id])
+  profilePhotoUrl String?
+  isActive        Boolean   @default(true)
+  avgRating       Float     @default(0)
+  totalServed     Int       @default(0)
+
+  queueEntries    QueueEntry[]
+  slots           Slot[]
+  bookings        Booking[]
+  ratings         Rating[]
+  walkIns         WalkIn[]
+  salaryRecords   SalaryRecord[]
+}
+
+model Service {
+  id          String    @id @default(cuid())
+  salonId     String
+  salon       Salon     @relation(fields: [salonId], references: [id])
+  name        String
+  price       Int       
+  durationMin Int
+  isActive    Boolean   @default(true)
+
+  bookings    Booking[]
+  walkIns     WalkIn[]
+}
+
+// ==========================================
+// 3. THE LIVE WAITLIST
+// ==========================================
+
 model QueueEntry {
-  id         String      @id @default(uuid())
+  id         String      @id @default(cuid())
   customerId String
+  customer   User        @relation(fields: [customerId], references: [id])
   barberId   String
+  barber     Barber      @relation(fields: [barberId], references: [id])
   salonId    String
+  salon      Salon       @relation(fields: [salonId], references: [id])
   position   Int
-  status     QueueStatus @default(WAITING)
+  status     QueueStatus @default(WAITING) 
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
+}
 
-  // Relations
-  customer   User   @relation(fields: [customerId], references: [id])
-  barber     Barber @relation(fields: [barberId], references: [id])
-  salon      Salon  @relation(fields: [salonId], references: [id])
+// ==========================================
+// 4. THE SCHEDULING ENGINE
+// ==========================================
+
+model Slot {
+  id         String     @id @default(cuid())
+  barberId   String
+  barber     Barber     @relation(fields: [barberId], references: [id])
+  salonId    String
+  salon      Salon      @relation(fields: [salonId], references: [id])
+  startTime  DateTime
+  endTime    DateTime
+  date       DateTime   @db.Date
+  status     SlotStatus @default(AVAILABLE)
+
+  booking    Booking?
+  walkIn     WalkIn?
+
+  @@index([barberId, date])
+  @@index([salonId, date])
+}
+
+model Booking {
+  id                     String        @id @default(cuid())
+  customerId             String
+  customer               User          @relation(fields: [customerId], references: [id])
+  barberId               String
+  barber                 Barber        @relation(fields: [barberId], references: [id])
+  slotId                 String        @unique
+  slot                   Slot          @relation(fields: [slotId], references: [id])
+  serviceId              String
+  service                Service       @relation(fields: [serviceId], references: [id])
+  
+  status                 BookingStatus @default(PENDING_PAYMENT)
+  checkinOtp             String
+  razorpayOrderId        String?
+  razorpayPaymentId      String?       @unique
+  commitmentFeePaid      Boolean       @default(false)
+  servicePaymentReceived Boolean       @default(false)
+  
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  rating                 Rating?
+}
+
+model WalkIn {
+  id               String   @id @default(cuid())
+  barberId         String
+  barber           Barber   @relation(fields: [barberId], references: [id])
+  salonId          String
+  salon            Salon    @relation(fields: [salonId], references: [id])
+  slotId           String   @unique
+  slot             Slot     @relation(fields: [slotId], references: [id])
+  serviceId        String?
+  service          Service? @relation(fields: [serviceId], references: [id])
+  
+  customerName     String
+  customerPhone    String?
+  paymentReceived  Boolean  @default(false)
+  paymentMethod    String?  
+  
+  createdAt        DateTime @default(now())
+}
+
+// ==========================================
+// 5. POST-SERVICE
+// ==========================================
+
+model Rating {
+  id         String   @id @default(cuid())
+  bookingId  String   @unique
+  booking    Booking  @relation(fields: [bookingId], references: [id])
+  customerId String
+  customer   User     @relation(fields: [customerId], references: [id])
+  barberId   String
+  barber     Barber   @relation(fields: [barberId], references: [id])
+  stars      Int      
+  comment    String?
+  createdAt  DateTime @default(now())
+}
+
+model SalaryRecord {
+  id             String    @id @default(cuid())
+  barberId       String
+  barber         Barber    @relation(fields: [barberId], references: [id])
+  periodStart    DateTime
+  periodEnd      DateTime
+  slotsCompleted Int
+  salaryAmount   Int       
+  paidAt         DateTime?
+  paidBy         String?   
+  createdAt      DateTime  @default(now())
 }
